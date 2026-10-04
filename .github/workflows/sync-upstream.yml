@@ -1,0 +1,50 @@
+# Keep this fork's main in step with upstream.
+#
+# Why this exists: a GitHub fork does NOT track its parent on its own. Something
+# has to push upstream commits into the fork, otherwise the fork stays frozen at
+# the commit it was forked from. This workflow is that something, which is what
+# makes "is my fork newer than what I have installed?" a meaningful question.
+#
+# NOTE: GitHub disables scheduled workflows in forks until they are enabled once
+# from the repository's Actions tab. Until then this only runs on manual dispatch.
+name: Sync from upstream
+
+on:
+  schedule:
+    - cron: "23 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Merge upstream/main into this fork
+        run: |
+          set -euo pipefail
+          git config user.name "fork-sync[bot]"
+          git config user.email "fork-sync@users.noreply.github.com"
+          git remote add upstream https://github.com/jackwener/OpenCLI.git
+          git fetch upstream main
+          # Our own patch commits sit on top of upstream, so when nothing new
+          # landed upstream/main is already an ancestor of HEAD.
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "Fork already contains upstream/main; nothing to do."
+            exit 0
+          fi
+          # Fails loudly (and leaves the fork untouched) when a local patch
+          # collides with an upstream change to the same lines. That is the
+          # signal to drop or rework the patch, not to force the merge.
+          git merge --no-edit upstream/main
+          git push origin main
