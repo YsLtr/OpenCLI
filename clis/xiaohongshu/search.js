@@ -365,8 +365,15 @@ function buildApplySearchFiltersJs(requestedFilters) {
           if (!element) return false;
           const rect = element.getBoundingClientRect();
           const style = getComputedStyle(element);
+          // Xiaohongshu injects transparent same-label decoys (data-hp-kind / aria-hidden,
+          // opacity ~1e-05) into the filter panel next to each real chip. They share the
+          // label, active state and bounding rect, so the old check treated them as visible
+          // and findOption() aborted with ambiguous_option. See upstream issues #2445/#2550
+          // and PR jackwener/OpenCLI#2563.
+          if (element.closest('[data-hp-kind], [aria-hidden="true"]')) return false;
           return rect.width > 0 && rect.height > 0 &&
-            style.display !== 'none' && style.visibility !== 'hidden';
+            style.display !== 'none' && style.visibility !== 'hidden' &&
+            Number(style.opacity) > 0.01 && style.pointerEvents !== 'none';
         };
         const visibleMatches = (root, selector) =>
           Array.from(root.querySelectorAll(selector)).filter(visible);
