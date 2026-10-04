@@ -13,11 +13,31 @@ const npmExecPath = process.env.npm_execpath;
 // runners (the build scripts themselves already invoke npm).
 const hasJsExecPath = npmExecPath && /\.(?:c|m)?js$/i.test(npmExecPath);
 const command = hasJsExecPath ? process.execPath : (process.platform === 'win32' ? 'npm.cmd' : 'npm');
-const args = hasJsExecPath ? [npmExecPath, 'run', 'build'] : ['run', 'build'];
-const result = spawnSync(command, args, {
-  stdio: 'inherit',
-  shell: !hasJsExecPath && process.platform === 'win32',
-});
+const runNpm = (npmArgs) => {
+  const args = hasJsExecPath ? [npmExecPath, ...npmArgs] : npmArgs;
+  return spawnSync(command, args, {
+    stdio: 'inherit',
+    shell: !hasJsExecPath && process.platform === 'win32',
+  });
+};
+
+// npm does not install a git dependency's devDependencies before running
+// `prepare`, so installing this repository straight from a git URL leaves the
+// TypeScript toolchain that `npm run build` needs missing. Install it first;
+// `--ignore-scripts` keeps that install from re-entering this prepare hook.
+const tscBin = process.platform === 'win32' ? 'tsc.cmd' : 'tsc';
+if (!fs.existsSync(path.join(process.cwd(), 'node_modules', '.bin', tscBin))) {
+  const install = runNpm(['install', '--include=dev', '--ignore-scripts', '--no-audit', '--no-fund']);
+  if (install.error) {
+    console.error(install.error.message);
+    process.exit(1);
+  }
+  if (install.status !== 0) {
+    process.exit(install.status ?? 1);
+  }
+}
+
+const result = runNpm(['run', 'build']);
 
 if (result.error) {
   console.error(result.error.message);
